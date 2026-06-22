@@ -1091,15 +1091,6 @@ const SidePanel = () => {
                     }`}>
                     {t('welcome_openSettings')}
                   </button>
-                  <div className="mt-4 text-sm opacity-75">
-                    <a
-                      href="https://ai-docs.portal.hyperspace.tools.sap/llm-proxy/recipes/claude/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`${isDarkMode ? 'text-sky-400 hover:text-sky-300' : 'text-sky-700 hover:text-sky-600'}`}>
-                      {t('welcome_quickStart')}
-                    </a>
-                  </div>
                 </div>
               </div>
             )}
@@ -1127,16 +1118,18 @@ const SidePanel = () => {
                         onReplay={handleReplay}
                       />
                     </div>
-                    <div className="flex-1 overflow-y-auto">
-                      <BookmarkList
-                        bookmarks={favoritePrompts}
-                        onBookmarkSelect={handleBookmarkSelect}
-                        onBookmarkUpdateTitle={handleBookmarkUpdateTitle}
-                        onBookmarkDelete={handleBookmarkDelete}
-                        onBookmarkReorder={handleBookmarkReorder}
-                        isDarkMode={isDarkMode}
-                      />
-                    </div>
+                    {favoritePrompts.length > 0 && (
+                      <div className="flex-1 overflow-y-auto">
+                        <BookmarkList
+                          bookmarks={favoritePrompts}
+                          onBookmarkSelect={handleBookmarkSelect}
+                          onBookmarkUpdateTitle={handleBookmarkUpdateTitle}
+                          onBookmarkDelete={handleBookmarkDelete}
+                          onBookmarkReorder={handleBookmarkReorder}
+                          isDarkMode={isDarkMode}
+                        />
+                      </div>
+                    )}
                   </>
                 )}
                 {messages.length > 0 && (
