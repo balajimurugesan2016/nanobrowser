@@ -1,4 +1,9 @@
-import { type ProviderConfig, type ModelConfig, ProviderTypeEnum } from '@extension/storage';
+import {
+  type ProviderConfig,
+  type ModelConfig,
+  ProviderTypeEnum,
+  normalizeHyperspaceAnthropicBaseUrl,
+} from '@extension/storage';
 import { ChatOpenAI, AzureChatOpenAI } from '@langchain/openai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
@@ -68,27 +73,6 @@ function isOpenAIReasoningModel(modelName: string): boolean {
   return (
     modelNameWithoutProvider.startsWith('o') ||
     (modelNameWithoutProvider.startsWith('gpt-5') && !modelNameWithoutProvider.startsWith('gpt-5-chat'))
-  );
-}
-
-// Function to check if a model is an Anthropic Opus model
-function isAnthropicOpusModel(modelName: string): boolean {
-  // Extract the model name without provider prefix if present
-  let modelNameWithoutProvider = modelName;
-  if (modelName.startsWith('anthropic/')) {
-    modelNameWithoutProvider = modelName.substring(10);
-  }
-  return modelNameWithoutProvider.startsWith('claude-opus');
-}
-
-// check if a model is sonnet-4-5 or haiku-4-5
-function isAnthropic4_5Model(modelName: string): boolean {
-  let modelNameWithoutProvider = modelName;
-  if (modelName.startsWith('anthropic/')) {
-    modelNameWithoutProvider = modelName.substring(10);
-  }
-  return (
-    modelNameWithoutProvider.startsWith('claude-sonnet-4-5') || modelNameWithoutProvider.startsWith('claude-haiku-4-5')
   );
 }
 
@@ -260,16 +244,24 @@ export function createChatModel(providerConfig: ProviderConfig, modelConfig: Mod
       return createOpenAIChatModel(providerConfig, modelConfig, undefined);
     }
     case ProviderTypeEnum.Anthropic: {
-      // For Opus models, only support temperature, not topP
-      // For 4.5 models, only support either temperature or topP, not both, so we only use temperature to align with Opus
+      const hyperspaceBaseUrl = normalizeHyperspaceAnthropicBaseUrl(providerConfig.baseUrl);
       const args = {
         model: modelConfig.modelName,
+        anthropicApiUrl: hyperspaceBaseUrl,
         apiKey: providerConfig.apiKey,
         maxTokens,
         temperature,
-        clientOptions: {},
+        clientOptions: {
+          authToken: providerConfig.apiKey,
+          defaultHeaders: {
+            'anthropic-beta': '',
+          },
+        },
       };
-      return new ChatAnthropic(args);
+      const chatModel = new ChatAnthropic(args);
+      // Hyperspace / newer Anthropic models: temperature OR top_p, never both; LangChain default topP is -1
+      (chatModel as { topP?: number }).topP = undefined;
+      return chatModel;
     }
     case ProviderTypeEnum.DeepSeek: {
       const args = {
