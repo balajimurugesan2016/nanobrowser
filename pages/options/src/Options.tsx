@@ -38,7 +38,7 @@ const Options = () => {
 
   const handleTabClick = (tabId: TabTypes) => {
     if (tabId === 'help') {
-      window.open('https://nanobrowser.ai/docs', '_blank');
+      window.open('https://ai-docs.portal.hyperspace.tools.sap/llm-proxy/recipes/claude/', '_blank');
     } else {
       setActiveTab(tabId);
     }
