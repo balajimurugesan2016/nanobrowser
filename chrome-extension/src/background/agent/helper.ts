@@ -330,7 +330,7 @@ export function createChatModel(providerConfig: ProviderConfig, modelConfig: Mod
       console.log('[createChatModel] Calling createOpenAIChatModel for OpenRouter');
       return createOpenAIChatModel(providerConfig, modelConfig, {
         headers: {
-          'HTTP-Referer': 'https://nanobrowser.ai',
+          'HTTP-Referer': 'https://sap-browser-automation.local',
           'X-Title': 'SAP Browser Automation',
         },
       });

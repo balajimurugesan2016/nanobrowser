@@ -44,13 +44,13 @@ export const SECURITY_PATTERNS: SecurityPattern[] = [
     replacement: '[BLOCKED_SYSTEM_REFERENCE]',
   },
   {
-    pattern: /\bnano[-_ ]+untrusted[-_ ]+content\b/gi,
+    pattern: /\bagent[-_ ]+untrusted[-_ ]+content\b/gi,
     type: ThreatType.PROMPT_INJECTION,
     description: 'Attempt to fake untrusted content tags',
     replacement: '',
   },
   {
-    pattern: /\bnano[-_ ]+user[-_ ]+request\b/gi,
+    pattern: /\bagent[-_ ]+user[-_ ]+request\b/gi,
     type: ThreatType.PROMPT_INJECTION,
     description: 'Attempt to fake user request tags',
     replacement: '',
@@ -62,7 +62,7 @@ export const SECURITY_PATTERNS: SecurityPattern[] = [
     replacement: '',
   },
   {
-    pattern: /\bnano[-_]+attached[-_]+files\b/gi,
+    pattern: /\bagent[-_]+attached[-_]+files\b/gi,
     type: ThreatType.PROMPT_INJECTION,
     description: 'Reference to attached files',
     replacement: '',
@@ -141,10 +141,10 @@ export function getPatterns(strict: boolean = false): SecurityPattern[] {
  * Tags to preserve during sanitization (wrapped content tags)
  */
 export const PRESERVED_TAGS = [
-  'nano_untrusted_content',
-  'nano_user_request',
-  'nano_attached_files',
-  'nano_file_content',
+  'agent_untrusted_content',
+  'agent_user_request',
+  'agent_attached_files',
+  'agent_file_content',
 ];
 
 /**

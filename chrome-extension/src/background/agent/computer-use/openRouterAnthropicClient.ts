@@ -306,8 +306,8 @@ export class OpenRouterAnthropicClient {
         'Content-Type': 'application/json',
         'anthropic-beta': version.betaHeader,
         'anthropic-version': '2023-06-01',
-        'HTTP-Referer': 'https://github.com/nanobrowser/nanobrowser',
-        'X-Title': 'Nanobrowser',
+        'HTTP-Referer': 'https://sap-browser-automation.local',
+        'X-Title': 'SAP Browser Automation',
       },
       body: JSON.stringify(body),
     });

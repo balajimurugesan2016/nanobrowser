@@ -1,6 +1,6 @@
-# Contributing to NanoBrowser
+# Contributing to SAP Browser Automation
 
-We deeply appreciate your interest in contributing to NanoBrowser! Every contribution helps make Nanobrowser more powerful and accessible for everyone.
+Thank you for contributing. Contributions help improve the extension for everyone.
 
 ## Quick Start
 
@@ -21,16 +21,14 @@ We deeply appreciate your interest in contributing to NanoBrowser! Every contrib
 
 ### Suggesting Enhancements
 - Open an issue with a clear title and detailed description
-- Explain why this enhancement would be useful
+- Explain why the enhancement would be useful
 
 ### Code Contributions
 1. Follow the existing code style
 2. Write clear commit messages in present tense ("Add feature" not "Added feature")
 3. Test your changes thoroughly
 4. Update documentation if needed
-5. Create a Pull Request with a clear description
-6. Be responsive to feedback and address review comments promptly
 
-## License
+## Development
 
-By contributing, you agree that your contributions will be licensed under the project's license terms.
+See [README.md](./README.md) for setup and build instructions.

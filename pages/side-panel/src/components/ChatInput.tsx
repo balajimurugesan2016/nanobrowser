@@ -91,14 +91,14 @@ export default function ChatInput({
           const fileContents = attachedFiles
             .map(file => {
               // Tag file content for background service to identify and sanitize
-              return `\n\n<nano_file_content type="file" name="${file.name}">\n${file.content}\n</nano_file_content>`;
+              return `\n\n<agent_file_content type="file" name="${file.name}">\n${file.content}\n</agent_file_content>`;
             })
             .join('\n');
 
           // Combine user message with tagged file content (for background service)
           messageContent = trimmedText
-            ? `${trimmedText}\n\n<nano_attached_files>${fileContents}</nano_attached_files>`
-            : `<nano_attached_files>${fileContents}</nano_attached_files>`;
+            ? `${trimmedText}\n\n<agent_attached_files>${fileContents}</agent_attached_files>`
+            : `<agent_attached_files>${fileContents}</agent_attached_files>`;
 
           // Create display version with only filenames (for UI)
           const fileList = attachedFiles.map(file => `📎 ${file.name}`).join('\n');
