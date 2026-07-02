@@ -1,7 +1,7 @@
 {
   "app_metadata_description": {
     "description": "Extension description",
-    "message": "Automate web tasks with AI using SAP Hyperspace. SAP Browser Automation helps you extract data, fill forms, and more."
+    "message": "Automate web tasks with AI using OpenRouter. SAP Browser Automation helps you extract data, fill forms, and more."
   },
   "app_metadata_name": {
     "description": "Extension name",
@@ -63,6 +63,46 @@
   },
   "chat_buttons_send": {
     "message": "Send"
+  },
+  "chat_progress_showing": {
+    "message": "Showing progress..."
+  },
+  "chat_planner_planCreated": {
+    "message": "Created a plan"
+  },
+  "chat_navigator_capturingPage": {
+    "message": "Capturing page"
+  },
+  "chat_navigator_batchLabel": {
+    "message": "Batch"
+  },
+  "chat_navigator_batchActions": {
+    "message": "actions"
+  },
+  "chat_navigator_batchHeader": {
+    "message": "Batch — $CURRENT$/$TOTAL$ actions",
+    "placeholders": {
+      "current": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "chat_navigator_toolLabel": {
+    "message": "Tool: $TOOL$",
+    "placeholders": {
+      "tool": {
+        "content": "$1",
+        "example": "browser_batch"
+      }
+    }
+  },
+  "chat_navigator_screenshotAlt": {
+    "message": "Page screenshot"
   },
   "chat_input_placeholder": {
     "message": "What can I help you with?"
@@ -238,6 +278,12 @@
   "options_general_enableVision_desc": {
     "message": "Use vision capability of LLMs (consumes more tokens for better results)"
   },
+  "options_general_enableVision_alwaysOn": {
+    "message": "Vision is always enabled. Browser automation requires vision-capable models."
+  },
+  "options_general_enableVision_statusOn": {
+    "message": "Always on"
+  },
   "options_general_displayHighlights": {
     "message": "Display Highlights"
   },
@@ -262,9 +308,33 @@
   "options_general_replayHistoricalTasks_desc": {
     "message": "Enable storing and replaying of agent step history (experimental, may have issues)"
   },
+  "options_general_automationMode": {
+    "message": "Automation Mode"
+  },
+  "options_general_automationMode_desc": {
+    "message": "Computer Use sends screenshots to Anthropic via OpenRouter. DOM mode uses element indexes (legacy)."
+  },
+  "options_general_automationMode_computerUse": {
+    "message": "Computer Use (Anthropic)"
+  },
+  "options_general_automationMode_dom": {
+    "message": "DOM indexes (legacy)"
+  },
+  "options_general_computerUseViewport": {
+    "message": "Computer Use Viewport"
+  },
+  "options_general_computerUseViewport_desc": {
+    "message": "Screenshot dimensions for coordinate-based actions (default 1280×720)"
+  },
 
   "options_models_providers_header": {
-    "message": "LLM Providers"
+    "message": "OpenRouter"
+  },
+  "options_models_openRouterOnly_desc": {
+    "message": "Add your OpenRouter API key and choose vision-capable models for browser automation."
+  },
+  "options_models_errors_openRouterOnly": {
+    "message": "Only OpenRouter models are supported. Select a model from your OpenRouter provider."
   },
   "options_models_providers_notConfigured": {
     "message": "No providers configured yet. Add a provider to get started."
@@ -318,10 +388,22 @@
   },
 
   "options_models_agents_navigator": {
-    "message": "Navigates websites and performs actions"
+    "message": "Uses Anthropic Computer Use via OpenRouter to navigate with screenshots and coordinate actions"
   },
   "options_models_agents_planner": {
     "message": "Develops and refines strategies to complete tasks"
+  },
+  "options_models_visionOnly_hint": {
+    "message": "Only vision-capable models are available for browser automation."
+  },
+  "options_models_computerUse_hint": {
+    "message": "Navigator requires an Anthropic Computer Use model on OpenRouter (e.g. Claude Sonnet 4). Planner can use any vision model."
+  },
+  "options_models_errors_computerUseRequired": {
+    "message": "This model does not support Anthropic Computer Use. Choose a Claude model that supports computer use on OpenRouter."
+  },
+  "options_models_errors_visionRequired": {
+    "message": "This model does not support vision. Choose a vision-capable model such as GPT-4o, Claude, or Gemini."
   },
 
   "options_models_labels_model": {
@@ -452,6 +534,9 @@
   "bg_errors_noTabId": {
     "message": "No tab ID provided"
   },
+  "bg_errors_attachFailed": {
+    "message": "Failed to attach to the browser tab for automation"
+  },
   "bg_errors_noTaskId": {
     "message": "No task ID provided"
   },
@@ -506,6 +591,36 @@
   "bg_setup_noNavigatorModel": {
     "message": "Please choose a model for the navigator in the settings first"
   },
+  "bg_setup_noVisionModel": {
+    "message": "The selected model \"$MODEL$\" does not support vision. Choose a vision-capable model in settings.",
+    "placeholders": {
+      "model": {
+        "content": "$1",
+        "example": "deepseek-chat"
+      }
+    }
+  },
+  "bg_setup_openRouterRequired": {
+    "message": "OpenRouter is required. Configure an OpenRouter API key and select OpenRouter models in settings."
+  },
+  "bg_setup_computerUseModelRequired": {
+    "message": "The selected navigator model \"$MODEL$\" does not support Anthropic Computer Use. Choose a computer-use-capable Claude model in settings.",
+    "placeholders": {
+      "model": {
+        "content": "$1",
+        "example": "google/gemini-2.5-pro"
+      }
+    }
+  },
+  "bg_setup_computerUseModelRetired": {
+    "message": "The navigator model \"$MODEL$\" no longer supports Anthropic Computer Use on OpenRouter. Switch to anthropic/claude-4.5-sonnet or anthropic/claude-4.6-sonnet in settings.",
+    "placeholders": {
+      "model": {
+        "content": "$1",
+        "example": "anthropic/claude-sonnet-4"
+      }
+    }
+  },
   "exec_errors_maxStepsReached": {
     "message": "Max steps reached"
   },
@@ -547,6 +662,76 @@
   },
   "exec_replay_historyEmpty": {
     "message": "History is empty"
+  },
+
+  "act_label_navigating": {
+    "message": "Navigating to"
+  },
+  "act_label_searching": {
+    "message": "Searching for"
+  },
+  "act_label_finding": {
+    "message": "Finding"
+  },
+  "act_label_clicking": {
+    "message": "Clicking"
+  },
+  "act_label_typing": {
+    "message": "Typing"
+  },
+  "act_label_pressingReturn": {
+    "message": "Pressing Return"
+  },
+  "act_label_pressingKey": {
+    "message": "Pressing"
+  },
+  "act_label_goingBack": {
+    "message": "Going back"
+  },
+  "act_label_scrolling": {
+    "message": "Scrolling"
+  },
+  "act_label_waiting": {
+    "message": "Waiting"
+  },
+  "act_label_switchingTab": {
+    "message": "Switching tab"
+  },
+  "act_label_openingTab": {
+    "message": "Opening tab"
+  },
+  "act_label_closingTab": {
+    "message": "Closing tab"
+  },
+  "act_label_selecting": {
+    "message": "Selecting"
+  },
+  "act_label_readingOptions": {
+    "message": "Reading options"
+  },
+  "act_label_caching": {
+    "message": "Caching content"
+  },
+  "act_label_completing": {
+    "message": "Completing task"
+  },
+  "act_label_movingMouse": {
+    "message": "Moving mouse"
+  },
+  "act_errors_computerUseMissingCoordinate": {
+    "message": "Computer action requires coordinates"
+  },
+  "act_errors_computerUseMissingText": {
+    "message": "Type action requires text"
+  },
+  "act_errors_computerUseMissingKey": {
+    "message": "Key action requires a key"
+  },
+  "act_errors_puppeteerNotConnected": {
+    "message": "Could not connect to the browser tab. Open an http(s) website tab and try again."
+  },
+  "act_errors_invalidStartTab": {
+    "message": "Computer Use cannot start on a blank or chrome:// tab. Open a website or allow navigation to a starter page."
   },
 
   "act_searchGoogle_start": {

@@ -5,6 +5,8 @@ import type { DOMHistoryElement } from '../browser/dom/history/view';
 import type MessageManager from './messages/service';
 import type { EventManager } from './event/manager';
 import { type Actors, type ExecutionState, AgentEvent } from './event/types';
+import type { MessageMetadata } from '@extension/storage';
+import type { ComputerUseSnapshot } from './computer-use/taskProgress';
 import { AgentStepHistory } from './history';
 
 export interface AgentOptions {
@@ -27,7 +29,7 @@ export const DEFAULT_AGENT_OPTIONS: AgentOptions = {
   retryDelay: 10,
   maxInputTokens: 128000,
   maxErrorLength: 400,
-  useVision: false,
+  useVision: true,
   useVisionForPlanner: true,
   includeAttributes: DEFAULT_INCLUDE_ATTRIBUTES,
   planningInterval: 3,
@@ -49,6 +51,8 @@ export class AgentContext {
   stateMessageAdded: boolean;
   history: AgentStepHistory;
   finalAnswer: string | null;
+  plannerNextSteps: string | null;
+  computerUseSnapshot: ComputerUseSnapshot | null;
 
   constructor(
     taskId: string,
@@ -73,14 +77,17 @@ export class AgentContext {
     this.stateMessageAdded = false;
     this.history = new AgentStepHistory();
     this.finalAnswer = null;
+    this.plannerNextSteps = null;
+    this.computerUseSnapshot = null;
   }
 
-  async emitEvent(actor: Actors, state: ExecutionState, eventDetails: string) {
+  async emitEvent(actor: Actors, state: ExecutionState, eventDetails: string, metadata?: MessageMetadata) {
     const event = new AgentEvent(actor, state, {
       taskId: this.taskId,
       step: this.nSteps,
       maxSteps: this.options.maxSteps,
       details: eventDetails,
+      metadata,
     });
     await this.eventManager.emit(event);
   }

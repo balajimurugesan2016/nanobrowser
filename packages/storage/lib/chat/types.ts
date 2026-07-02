@@ -6,10 +6,32 @@ export enum Actors {
   VALIDATOR = 'validator',
 }
 
+export type MessageKind = 'text' | 'plan' | 'batch' | 'capture' | 'progress';
+
+export type BatchActionStatus = 'pending' | 'running' | 'done' | 'failed';
+
+export interface BatchActionItem {
+  label: string;
+  detail?: string;
+  status: BatchActionStatus;
+}
+
+export interface MessageMetadata {
+  planSteps?: string[];
+  batchActions?: BatchActionItem[];
+  batchCurrent?: number;
+  batchTotal?: number;
+  toolName?: string;
+  screenshot?: string;
+  pageUrl?: string;
+}
+
 export interface Message {
   actor: Actors;
   content: string;
   timestamp: number; // Unix timestamp in milliseconds
+  kind?: MessageKind;
+  metadata?: MessageMetadata;
 }
 
 export interface ChatMessage extends Message {

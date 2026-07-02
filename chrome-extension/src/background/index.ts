@@ -6,7 +6,15 @@ import {
   generalSettingsStore,
   llmProviderStore,
   analyticsSettingsStore,
+  isVisionCapableModel,
+  isComputerUseCapableModel,
+  OPENROUTER_DEFAULT_BASE_URL,
+  ProviderTypeEnum,
 } from '@extension/storage';
+import {
+  isRetiredOpenRouterComputerUseModel,
+  getOpenRouterComputerUseReplacementModel,
+} from '@extension/storage/lib/settings/visionModels';
 import { t } from '@extension/i18n';
 import BrowserContext from './browser/context';
 import { Executor } from './agent/executor';
@@ -100,6 +108,7 @@ chrome.runtime.onConnect.addListener(port => {
             if (!message.tabId) return port.postMessage({ type: 'error', error: t('bg_errors_noTabId') });
 
             logger.info('new_task', message.tabId, message.task);
+            await browserContext.switchTab(message.tabId);
             currentExecutor = await setupExecutor(message.taskId, message.task, browserContext);
             subscribeToExecutorEvents(currentExecutor);
 
@@ -116,6 +125,7 @@ chrome.runtime.onConnect.addListener(port => {
 
             // If executor exists, add follow-up task
             if (currentExecutor) {
+              await browserContext.switchTab(message.tabId);
               currentExecutor.addFollowUpTask(message.task);
               // Re-subscribe to events in case the previous subscription was cleaned up
               subscribeToExecutorEvents(currentExecutor);
@@ -283,20 +293,55 @@ async function setupExecutor(taskId: string, task: string, browserContext: Brows
     }
   }
 
-  const navigatorModel = agentModels[AgentNameEnum.Navigator];
+  let navigatorModel = agentModels[AgentNameEnum.Navigator];
   if (!navigatorModel) {
     throw new Error(t('bg_setup_noNavigatorModel'));
   }
-  // Log the provider config being used for the navigator
+  if (navigatorModel.provider !== ProviderTypeEnum.OpenRouter) {
+    throw new Error(t('bg_setup_openRouterRequired'));
+  }
+
+  const generalSettings = await generalSettingsStore.getSettings();
+  const automationMode = generalSettings.automationMode ?? 'computer_use';
+
+  if (automationMode === 'computer_use' && isRetiredOpenRouterComputerUseModel(navigatorModel.modelName)) {
+    const replacementModel = getOpenRouterComputerUseReplacementModel(navigatorModel.modelName);
+    logger.warning(
+      `Navigator model ${navigatorModel.modelName} no longer supports computer use; upgrading to ${replacementModel}`,
+    );
+    const migratedNavigatorModel = { ...navigatorModel, modelName: replacementModel };
+    await agentModelStore.setAgentModel(AgentNameEnum.Navigator, migratedNavigatorModel);
+    navigatorModel = migratedNavigatorModel;
+  }
+
   const navigatorProviderConfig = providers[navigatorModel.provider];
-  const navigatorLLM = createChatModel(navigatorProviderConfig, navigatorModel);
+  if (!navigatorProviderConfig || !isVisionCapableModel(navigatorProviderConfig.type, navigatorModel.modelName)) {
+    throw new Error(t('bg_setup_noVisionModel', [navigatorModel.modelName]));
+  }
+
+  if (automationMode === 'computer_use') {
+    if (!isComputerUseCapableModel(navigatorProviderConfig.type, navigatorModel.modelName)) {
+      throw new Error(t('bg_setup_computerUseModelRequired', [navigatorModel.modelName]));
+    }
+  }
+
+  const navigatorLLM = automationMode === 'dom' ? createChatModel(navigatorProviderConfig, navigatorModel) : null;
 
   let plannerLLM: BaseChatModel | null = null;
   const plannerModel = agentModels[AgentNameEnum.Planner];
   if (plannerModel) {
-    // Log the provider config being used for the planner
+    if (plannerModel.provider !== ProviderTypeEnum.OpenRouter) {
+      throw new Error(t('bg_setup_openRouterRequired'));
+    }
     const plannerProviderConfig = providers[plannerModel.provider];
+    if (!plannerProviderConfig || !isVisionCapableModel(plannerProviderConfig.type, plannerModel.modelName)) {
+      throw new Error(t('bg_setup_noVisionModel', [plannerModel.modelName]));
+    }
     plannerLLM = createChatModel(plannerProviderConfig, plannerModel);
+  }
+
+  if (!plannerLLM) {
+    plannerLLM = createChatModel(navigatorProviderConfig, navigatorModel);
   }
 
   // Apply firewall settings to browser context
@@ -313,23 +358,33 @@ async function setupExecutor(taskId: string, task: string, browserContext: Brows
     });
   }
 
-  const generalSettings = await generalSettingsStore.getSettings();
   browserContext.updateConfig({
     minimumWaitPageLoadTime: generalSettings.minWaitPageLoad / 1000.0,
     displayHighlights: generalSettings.displayHighlights,
   });
 
   const executor = new Executor(task, taskId, browserContext, navigatorLLM, {
-    plannerLLM: plannerLLM ?? navigatorLLM,
+    plannerLLM: plannerLLM,
     agentOptions: {
       maxSteps: generalSettings.maxSteps,
       maxFailures: generalSettings.maxFailures,
       maxActionsPerStep: generalSettings.maxActionsPerStep,
-      useVision: generalSettings.useVision,
+      useVision: true,
       useVisionForPlanner: true,
       planningInterval: generalSettings.planningInterval,
     },
     generalSettings: generalSettings,
+    automationMode,
+    computerUseConfig:
+      automationMode === 'computer_use'
+        ? {
+            apiKey: navigatorProviderConfig.apiKey,
+            baseUrl: navigatorProviderConfig.baseUrl || OPENROUTER_DEFAULT_BASE_URL,
+            modelName: navigatorModel.modelName,
+            viewportWidth: generalSettings.computerUseViewportWidth,
+            viewportHeight: generalSettings.computerUseViewportHeight,
+          }
+        : undefined,
   });
 
   return executor;

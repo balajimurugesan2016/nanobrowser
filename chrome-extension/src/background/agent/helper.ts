@@ -1,9 +1,4 @@
-import {
-  type ProviderConfig,
-  type ModelConfig,
-  ProviderTypeEnum,
-  normalizeHyperspaceAnthropicBaseUrl,
-} from '@extension/storage';
+import { type ProviderConfig, type ModelConfig, ProviderTypeEnum } from '@extension/storage';
 import { ChatOpenAI, AzureChatOpenAI } from '@langchain/openai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
@@ -244,22 +239,14 @@ export function createChatModel(providerConfig: ProviderConfig, modelConfig: Mod
       return createOpenAIChatModel(providerConfig, modelConfig, undefined);
     }
     case ProviderTypeEnum.Anthropic: {
-      const hyperspaceBaseUrl = normalizeHyperspaceAnthropicBaseUrl(providerConfig.baseUrl);
       const args = {
         model: modelConfig.modelName,
-        anthropicApiUrl: hyperspaceBaseUrl,
         apiKey: providerConfig.apiKey,
         maxTokens,
         temperature,
-        clientOptions: {
-          authToken: providerConfig.apiKey,
-          defaultHeaders: {
-            'anthropic-beta': '',
-          },
-        },
+        ...(providerConfig.baseUrl ? { anthropicApiUrl: providerConfig.baseUrl } : {}),
       };
       const chatModel = new ChatAnthropic(args);
-      // Hyperspace / newer Anthropic models: temperature OR top_p, never both; LangChain default topP is -1
       (chatModel as { topP?: number }).topP = undefined;
       return chatModel;
     }

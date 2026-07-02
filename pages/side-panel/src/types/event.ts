@@ -1,4 +1,4 @@
-import type { Actors } from '@extension/storage';
+import type { Actors, MessageMetadata } from '@extension/storage';
 
 export enum EventType {
   /**
@@ -40,6 +40,13 @@ export enum ExecutionState {
   ACT_START = 'act.start',
   ACT_OK = 'act.ok',
   ACT_FAIL = 'act.fail',
+
+  // Plan and batch display states (Claude-style execution UI)
+  PLAN_CREATED = 'plan.created',
+  BATCH_START = 'batch.start',
+  BATCH_PROGRESS = 'batch.progress',
+  BATCH_OK = 'batch.ok',
+  CAPTURE_PAGE = 'capture.start',
 }
 
 export interface EventData {
@@ -51,6 +58,8 @@ export interface EventData {
   maxSteps: number;
   /** details is the content of the event */
   details: string;
+  /** Optional structured metadata for rich UI rendering */
+  metadata?: MessageMetadata;
 }
 
 export class AgentEvent {

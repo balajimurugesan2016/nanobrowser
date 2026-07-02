@@ -4,12 +4,10 @@ import type { BaseStorage } from '../base/types';
 import { type AgentNameEnum, llmProviderModelNames, llmProviderParameters, ProviderTypeEnum } from './types';
 
 const AZURE_API_VERSION = '2025-04-01-preview';
-export const HYPERSPACE_ANTHROPIC_BASE_URL = 'http://localhost:6655/anthropic';
+export const OPENROUTER_DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
 
-/** Normalize Hyperspace base URL for @anthropic-ai/sdk (it appends `/v1/messages`). */
-export function normalizeHyperspaceAnthropicBaseUrl(baseUrl?: string): string {
-  const trimmed = (baseUrl || HYPERSPACE_ANTHROPIC_BASE_URL).trim().replace(/\/+$/, '');
-  return trimmed.replace(/\/v1$/, '');
+export function isOpenRouterProvider(providerId: string, config?: ProviderConfig): boolean {
+  return providerId === ProviderTypeEnum.OpenRouter || config?.type === ProviderTypeEnum.OpenRouter;
 }
 
 // Interface for a single provider configuration
@@ -87,7 +85,7 @@ export function getDefaultDisplayNameFromProviderId(providerId: string): string 
     case ProviderTypeEnum.OpenAI:
       return 'OpenAI';
     case ProviderTypeEnum.Anthropic:
-      return 'Hyperspace Claude';
+      return 'Anthropic';
     case ProviderTypeEnum.DeepSeek:
       return 'DeepSeek';
     case ProviderTypeEnum.Gemini:
@@ -128,13 +126,11 @@ export function getDefaultProviderConfig(providerId: string): ProviderConfig {
         name: getDefaultDisplayNameFromProviderId(providerId),
         type: providerId,
         baseUrl:
-          providerId === ProviderTypeEnum.Anthropic
-            ? HYPERSPACE_ANTHROPIC_BASE_URL
-            : providerId === ProviderTypeEnum.OpenRouter
-              ? 'https://openrouter.ai/api/v1'
-              : providerId === ProviderTypeEnum.Llama
-                ? 'https://api.llama.com/v1'
-                : undefined,
+          providerId === ProviderTypeEnum.OpenRouter
+            ? OPENROUTER_DEFAULT_BASE_URL
+            : providerId === ProviderTypeEnum.Llama
+              ? 'https://api.llama.com/v1'
+              : undefined,
         modelNames: [...(llmProviderModelNames[providerId] || [])],
         createdAt: Date.now(),
       };
@@ -226,12 +222,6 @@ function ensureBackwardCompatibility(providerId: string, config: ProviderConfig)
     updatedConfig.createdAt = new Date('03/04/2025').getTime();
   }
 
-  if (updatedConfig.type === ProviderTypeEnum.Anthropic && updatedConfig.baseUrl) {
-    updatedConfig.baseUrl = normalizeHyperspaceAnthropicBaseUrl(updatedConfig.baseUrl);
-  }
-
-  // Log output config
-  // console.log(`[ensureBackwardCompatibility] Output for ${providerId}:`, JSON.stringify(updatedConfig));
   return updatedConfig;
 }
 

@@ -111,24 +111,72 @@ export const GeneralSettings = ({ isDarkMode = false }: GeneralSettingsProps) =>
                 {t('options_general_enableVision')}
               </h3>
               <p className={`text-sm font-normal ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                {t('options_general_enableVision_desc')}
+                {t('options_general_enableVision_alwaysOn')}
               </p>
             </div>
-            <div className="relative inline-flex cursor-pointer items-center">
-              <input
-                id="useVision"
-                type="checkbox"
-                checked={settings.useVision}
-                onChange={e => updateSetting('useVision', e.target.checked)}
-                className="peer sr-only"
-              />
-              <label
-                htmlFor="useVision"
-                className={`peer h-6 w-11 rounded-full ${isDarkMode ? 'bg-slate-600' : 'bg-gray-200'} after:absolute after:left-[2px] after:top-[2px] after:size-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-blue-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300`}>
-                <span className="sr-only">{t('options_general_enableVision')}</span>
-              </label>
-            </div>
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-medium ${isDarkMode ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
+              {t('options_general_enableVision_statusOn')}
+            </span>
           </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className={`text-base font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                {t('options_general_automationMode')}
+              </h3>
+              <p className={`text-sm font-normal ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {t('options_general_automationMode_desc')}
+              </p>
+            </div>
+            <label htmlFor="automationMode" className="sr-only">
+              {t('options_general_automationMode')}
+            </label>
+            <select
+              id="automationMode"
+              value={settings.automationMode ?? 'computer_use'}
+              onChange={e => updateSetting('automationMode', e.target.value as GeneralSettingsConfig['automationMode'])}
+              className={`w-48 rounded-md border text-sm ${isDarkMode ? 'border-slate-600 bg-slate-700 text-gray-200' : 'border-gray-300 bg-white text-gray-700'} px-3 py-2`}>
+              <option value="computer_use">{t('options_general_automationMode_computerUse')}</option>
+              <option value="dom">{t('options_general_automationMode_dom')}</option>
+            </select>
+          </div>
+
+          {(settings.automationMode ?? 'computer_use') === 'computer_use' && (
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className={`text-base font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {t('options_general_computerUseViewport')}
+                </h3>
+                <p className={`text-sm font-normal ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {t('options_general_computerUseViewport_desc')}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  id="computerUseViewportWidth"
+                  type="number"
+                  min={800}
+                  max={1920}
+                  value={settings.computerUseViewportWidth ?? 1280}
+                  onChange={e => updateSetting('computerUseViewportWidth', Number.parseInt(e.target.value, 10) || 1280)}
+                  className={`w-20 rounded-md border text-sm ${isDarkMode ? 'border-slate-600 bg-slate-700 text-gray-200' : 'border-gray-300 bg-white text-gray-700'} px-3 py-2`}
+                  aria-label="Viewport width"
+                />
+                <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>×</span>
+                <input
+                  id="computerUseViewportHeight"
+                  type="number"
+                  min={600}
+                  max={1080}
+                  value={settings.computerUseViewportHeight ?? 720}
+                  onChange={e => updateSetting('computerUseViewportHeight', Number.parseInt(e.target.value, 10) || 720)}
+                  className={`w-20 rounded-md border text-sm ${isDarkMode ? 'border-slate-600 bg-slate-700 text-gray-200' : 'border-gray-300 bg-white text-gray-700'} px-3 py-2`}
+                  aria-label="Viewport height"
+                />
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-between">
             <div>

@@ -1,8 +1,10 @@
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { type ActionResult, AgentContext, type AgentOptions, type AgentOutput } from './types';
 import { t } from '@extension/i18n';
-import { NavigatorAgent, NavigatorActionRegistry } from './agents/navigator';
+import { NavigatorAgent, NavigatorActionRegistry, type NavigatorResult } from './agents/navigator';
+import { ComputerUseNavigator } from './agents/computerUseNavigator';
 import { PlannerAgent, type PlannerOutput } from './agents/planner';
+import type { AgentStepRecord, AgentStepHistory } from './history';
 import { NavigatorPrompt } from './prompts/navigator';
 import { PlannerPrompt } from './prompts/planner';
 import { createLogger } from '@src/background/log';
@@ -22,38 +24,58 @@ import {
 } from './agents/errors';
 import { URLNotAllowedError } from '../browser/views';
 import { chatHistoryStore } from '@extension/storage/lib/chat';
-import type { AgentStepHistory } from './history';
-import type { GeneralSettingsConfig } from '@extension/storage';
+import type { AutomationMode, GeneralSettingsConfig } from '@extension/storage';
 import { analytics } from '../services/analytics';
+import type { ComputerUseConfig } from './computer-use/types';
+import { evaluateNumberedTaskProgress } from './computer-use/taskProgress';
 
 const logger = createLogger('Executor');
+
+export interface NavigatorRunner {
+  execute(): Promise<AgentOutput<NavigatorResult>>;
+  addStateMessageToMemory(): Promise<void>;
+  executeHistoryStep(
+    historyItem: AgentStepRecord,
+    stepIndex: number,
+    totalSteps: number,
+    maxRetries?: number,
+    delay?: number,
+    skipFailures?: boolean,
+  ): Promise<ActionResult[]>;
+}
 
 export interface ExecutorExtraArgs {
   plannerLLM?: BaseChatModel;
   extractorLLM?: BaseChatModel;
   agentOptions?: Partial<AgentOptions>;
   generalSettings?: GeneralSettingsConfig;
+  automationMode?: AutomationMode;
+  computerUseConfig?: ComputerUseConfig;
 }
 
 export class Executor {
-  private readonly navigator: NavigatorAgent;
+  private readonly navigator: NavigatorRunner;
   private readonly planner: PlannerAgent;
   private readonly context: AgentContext;
   private readonly plannerPrompt: PlannerPrompt;
   private readonly navigatorPrompt: NavigatorPrompt;
   private readonly generalSettings: GeneralSettingsConfig | undefined;
+  private readonly automationMode: AutomationMode;
   private tasks: string[] = [];
   constructor(
     task: string,
     taskId: string,
     browserContext: BrowserContext,
-    navigatorLLM: BaseChatModel,
+    navigatorLLM: BaseChatModel | null,
     extraArgs?: Partial<ExecutorExtraArgs>,
   ) {
     const messageManager = new MessageManager();
 
     const plannerLLM = extraArgs?.plannerLLM ?? navigatorLLM;
-    const extractorLLM = extraArgs?.extractorLLM ?? navigatorLLM;
+    if (!plannerLLM) {
+      throw new Error('Planner LLM is required');
+    }
+
     const eventManager = new EventManager();
     const context = new AgentContext(
       taskId,
@@ -68,15 +90,32 @@ export class Executor {
     this.navigatorPrompt = new NavigatorPrompt(context.options.maxActionsPerStep);
     this.plannerPrompt = new PlannerPrompt();
 
-    const actionBuilder = new ActionBuilder(context, extractorLLM);
-    const navigatorActionRegistry = new NavigatorActionRegistry(actionBuilder.buildDefaultActions());
+    const automationMode = extraArgs?.automationMode ?? 'computer_use';
+    this.automationMode = automationMode;
 
-    // Initialize agents with their respective prompts
-    this.navigator = new NavigatorAgent(navigatorActionRegistry, {
-      chatLLM: navigatorLLM,
-      context: context,
-      prompt: this.navigatorPrompt,
-    });
+    if (automationMode === 'computer_use') {
+      if (!extraArgs?.computerUseConfig) {
+        throw new Error('Computer use config is required when automation mode is computer_use');
+      }
+      this.navigator = new ComputerUseNavigator({
+        context,
+        config: extraArgs.computerUseConfig,
+        prompt: this.navigatorPrompt,
+        task,
+      });
+    } else {
+      if (!navigatorLLM) {
+        throw new Error('Navigator LLM is required when automation mode is dom');
+      }
+      const extractorLLM = extraArgs?.extractorLLM ?? navigatorLLM;
+      const actionBuilder = new ActionBuilder(context, extractorLLM);
+      const navigatorActionRegistry = new NavigatorActionRegistry(actionBuilder.buildDefaultActions());
+      this.navigator = new NavigatorAgent(navigatorActionRegistry, {
+        chatLLM: navigatorLLM,
+        context: context,
+        prompt: this.navigatorPrompt,
+      });
+    }
 
     this.planner = new PlannerAgent({
       chatLLM: plannerLLM,
@@ -106,9 +145,6 @@ export class Executor {
     this.context.actionResults = this.context.actionResults.filter(result => result.includeInMemory);
   }
 
-  /**
-   * Check if task is complete based on planner output and handle completion
-   */
   private checkTaskCompletion(planOutput: AgentOutput<PlannerOutput> | null): boolean {
     if (planOutput?.result?.done) {
       logger.info('✅ Planner confirms task completion');
@@ -118,6 +154,35 @@ export class Executor {
       return true;
     }
     return false;
+  }
+
+  private async maybeCompleteComputerUseTask(
+    planOutput: AgentOutput<PlannerOutput> | null,
+  ): Promise<AgentOutput<PlannerOutput> | null> {
+    if (planOutput?.result?.done || !this.context.computerUseSnapshot) {
+      return planOutput;
+    }
+
+    const page = await this.context.browserContext.getCurrentPage();
+    const progress = evaluateNumberedTaskProgress(
+      this.tasks[this.tasks.length - 1],
+      page.url(),
+      this.context.computerUseSnapshot,
+      await page.getCheckboxStates(),
+    );
+
+    if (!progress.likelyComplete) {
+      return planOutput;
+    }
+
+    logger.info('✅ Computer use progress indicates task completion');
+    const completedPlan: PlannerOutput = {
+      ...planOutput.result!,
+      done: true,
+      next_steps: '',
+      final_answer: planOutput.result?.final_answer || 'Task completed successfully.',
+    };
+    return { ...planOutput, result: completedPlan };
   }
 
   /**
@@ -153,22 +218,33 @@ export class Executor {
           break;
         }
 
-        // Run planner periodically for guidance
-        if (this.planner && (context.nSteps % context.options.planningInterval === 0 || navigatorDone)) {
+        const shouldRunPlannerBeforeNavigate =
+          this.planner &&
+          (this.automationMode === 'computer_use'
+            ? context.nSteps === 0
+            : context.nSteps % context.options.planningInterval === 0 || navigatorDone);
+
+        if (shouldRunPlannerBeforeNavigate) {
           navigatorDone = false;
           latestPlanOutput = await this.runPlanner();
 
-          // Check if task is complete after planner run
           if (this.checkTaskCompletion(latestPlanOutput)) {
             break;
           }
         }
 
-        // Execute navigator
         navigatorDone = await this.navigate();
 
-        // If navigator indicates completion, the next periodic planner run will validate it
-        if (navigatorDone) {
+        if (this.automationMode === 'computer_use' && this.planner) {
+          latestPlanOutput = await this.runPlanner();
+          if (this.checkTaskCompletion(latestPlanOutput)) {
+            break;
+          }
+          latestPlanOutput = await this.maybeCompleteComputerUseTask(latestPlanOutput);
+          if (this.checkTaskCompletion(latestPlanOutput)) {
+            break;
+          }
+        } else if (navigatorDone) {
           logger.info('🔄 Navigator indicates completion - will be validated by next planner run');
         }
       }
@@ -248,6 +324,7 @@ export class Executor {
       const planOutput = await this.planner.execute();
       if (planOutput.result) {
         this.context.messageManager.addPlan(JSON.stringify(planOutput.result), positionForPlan);
+        this.context.plannerNextSteps = planOutput.result.next_steps || null;
       }
       return planOutput;
     } catch (error) {

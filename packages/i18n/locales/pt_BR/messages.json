@@ -1,7 +1,7 @@
 {
   "app_metadata_description": {
     "description": "Descrição da extensão",
-    "message": "Automatize tarefas da web com IA usando o SAP Hyperspace. O SAP Browser Automation ajuda você a extrair dados, preencher formulários e muito mais."
+    "message": "Automatize tarefas da web com IA usando o OpenRouter. O SAP Browser Automation ajuda você a extrair dados, preencher formulários e muito mais."
   },
   "app_metadata_name": {
     "description": "Nome da extensão",
@@ -63,6 +63,46 @@
   },
   "chat_buttons_send": {
     "message": "Enviar"
+  },
+  "chat_progress_showing": {
+    "message": "Mostrando progresso..."
+  },
+  "chat_planner_planCreated": {
+    "message": "Plano criado"
+  },
+  "chat_navigator_capturingPage": {
+    "message": "Capturando página"
+  },
+  "chat_navigator_batchLabel": {
+    "message": "Lote"
+  },
+  "chat_navigator_batchActions": {
+    "message": "ações"
+  },
+  "chat_navigator_batchHeader": {
+    "message": "Lote — $CURRENT$/$TOTAL$ ações",
+    "placeholders": {
+      "current": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "chat_navigator_toolLabel": {
+    "message": "Ferramenta: $TOOL$",
+    "placeholders": {
+      "tool": {
+        "content": "$1",
+        "example": "browser_batch"
+      }
+    }
+  },
+  "chat_navigator_screenshotAlt": {
+    "message": "Captura de tela da página"
   },
   "chat_input_placeholder": {
     "message": "Como posso ajudar?"
@@ -238,6 +278,12 @@
   "options_general_enableVision_desc": {
     "message": "Usar capacidade de visão dos modelos de linguagem (consome mais tokens para melhores resultados)"
   },
+  "options_general_enableVision_alwaysOn": {
+    "message": "A visão está sempre ativada. A automação do navegador requer modelos com suporte a visão."
+  },
+  "options_general_enableVision_statusOn": {
+    "message": "Sempre ativada"
+  },
   "options_general_displayHighlights": {
     "message": "Mostrar Destaques"
   },
@@ -262,8 +308,32 @@
   "options_general_replayHistoricalTasks_desc": {
     "message": "Ativar o armazenamento e a reprodução do histórico de passos do agente (experimental, pode ter problemas)"
   },
+  "options_general_automationMode": {
+    "message": "Modo de automação"
+  },
+  "options_general_automationMode_desc": {
+    "message": "Computer Use envia capturas de tela para a Anthropic via OpenRouter. O modo DOM usa índices de elementos (legado)."
+  },
+  "options_general_automationMode_computerUse": {
+    "message": "Computer Use (Anthropic)"
+  },
+  "options_general_automationMode_dom": {
+    "message": "Índices DOM (legado)"
+  },
+  "options_general_computerUseViewport": {
+    "message": "Viewport do Computer Use"
+  },
+  "options_general_computerUseViewport_desc": {
+    "message": "Dimensões da captura de tela para ações por coordenadas (padrão 1280×720)"
+  },
   "options_models_providers_header": {
-    "message": "Provedores de LLM"
+    "message": "OpenRouter"
+  },
+  "options_models_openRouterOnly_desc": {
+    "message": "Adicione sua chave de API do OpenRouter e escolha modelos com suporte a visão para automação do navegador."
+  },
+  "options_models_errors_openRouterOnly": {
+    "message": "Apenas modelos do OpenRouter são suportados. Selecione um modelo do seu provedor OpenRouter."
   },
   "options_models_providers_notConfigured": {
     "message": "Nenhum provedor configurado ainda. Adicione um provedor para começar."
@@ -317,10 +387,22 @@
   },
 
   "options_models_agents_navigator": {
-    "message": "Navega em sites e executa ações"
+    "message": "Usa Anthropic Computer Use via OpenRouter para navegar com capturas de tela e ações por coordenadas"
   },
   "options_models_agents_planner": {
     "message": "Desenvolve e refina estratégias para completar tarefas"
+  },
+  "options_models_visionOnly_hint": {
+    "message": "Apenas modelos com suporte a visão estão disponíveis para automação do navegador."
+  },
+  "options_models_computerUse_hint": {
+    "message": "O Navigator requer um modelo Anthropic Computer Use no OpenRouter (ex.: Claude Sonnet 4). O Planner pode usar qualquer modelo com visão."
+  },
+  "options_models_errors_computerUseRequired": {
+    "message": "Este modelo não suporta Anthropic Computer Use. Escolha um modelo Claude compatível no OpenRouter."
+  },
+  "options_models_errors_visionRequired": {
+    "message": "Este modelo não suporta visão. Escolha um modelo compatível, como GPT-4o, Claude ou Gemini."
   },
 
   "options_models_labels_model": {
@@ -451,6 +533,9 @@
   "bg_errors_noTabId": {
     "message": "Nenhum ID de aba fornecido"
   },
+  "bg_errors_attachFailed": {
+    "message": "Falha ao conectar à aba do navegador para automação"
+  },
   "bg_errors_noTaskId": {
     "message": "Nenhum ID de tarefa fornecido"
   },
@@ -505,6 +590,36 @@
   "bg_setup_noNavigatorModel": {
     "message": "Por favor, escolha um modelo para o navegador nas configurações primeiro"
   },
+  "bg_setup_openRouterRequired": {
+    "message": "O OpenRouter é obrigatório. Configure uma chave de API do OpenRouter e selecione modelos OpenRouter nas configurações."
+  },
+  "bg_setup_computerUseModelRequired": {
+    "message": "O modelo do navigator \"$MODEL$\" não suporta Anthropic Computer Use. Escolha um modelo Claude compatível nas configurações.",
+    "placeholders": {
+      "model": {
+        "content": "$1",
+        "example": "google/gemini-2.5-pro"
+      }
+    }
+  },
+  "bg_setup_computerUseModelRetired": {
+    "message": "O modelo do navigator \"$MODEL$\" não oferece mais suporte a Anthropic Computer Use no OpenRouter. Troque para anthropic/claude-4.5-sonnet ou anthropic/claude-4.6-sonnet nas configurações.",
+    "placeholders": {
+      "model": {
+        "content": "$1",
+        "example": "anthropic/claude-sonnet-4"
+      }
+    }
+  },
+  "bg_setup_noVisionModel": {
+    "message": "O modelo selecionado \"$MODEL$\" não suporta visão. Escolha um modelo compatível nas configurações.",
+    "placeholders": {
+      "model": {
+        "content": "$1",
+        "example": "deepseek-chat"
+      }
+    }
+  },
   "exec_errors_maxStepsReached": {
     "message": "Máximo de passos atingido"
   },
@@ -546,6 +661,76 @@
   },
   "exec_replay_historyEmpty": {
     "message": "O histórico está vazio"
+  },
+
+  "act_label_navigating": {
+    "message": "Navegando para"
+  },
+  "act_label_searching": {
+    "message": "Pesquisando por"
+  },
+  "act_label_finding": {
+    "message": "Localizando"
+  },
+  "act_label_clicking": {
+    "message": "Clicando"
+  },
+  "act_label_typing": {
+    "message": "Digitando"
+  },
+  "act_label_pressingReturn": {
+    "message": "Pressionando Enter"
+  },
+  "act_label_pressingKey": {
+    "message": "Pressionando"
+  },
+  "act_label_goingBack": {
+    "message": "Voltando"
+  },
+  "act_label_scrolling": {
+    "message": "Rolando"
+  },
+  "act_label_waiting": {
+    "message": "Aguardando"
+  },
+  "act_label_switchingTab": {
+    "message": "Alternando aba"
+  },
+  "act_label_openingTab": {
+    "message": "Abrindo aba"
+  },
+  "act_label_closingTab": {
+    "message": "Fechando aba"
+  },
+  "act_label_selecting": {
+    "message": "Selecionando"
+  },
+  "act_label_readingOptions": {
+    "message": "Lendo opções"
+  },
+  "act_label_caching": {
+    "message": "Armazenando conteúdo"
+  },
+  "act_label_completing": {
+    "message": "Concluindo tarefa"
+  },
+  "act_label_movingMouse": {
+    "message": "Movendo o mouse"
+  },
+  "act_errors_computerUseMissingCoordinate": {
+    "message": "A ação requer coordenadas"
+  },
+  "act_errors_computerUseMissingText": {
+    "message": "A ação de digitar requer texto"
+  },
+  "act_errors_computerUseMissingKey": {
+    "message": "A ação de tecla requer uma tecla"
+  },
+  "act_errors_puppeteerNotConnected": {
+    "message": "Não foi possível conectar à aba do navegador. Abra uma aba http(s) e tente novamente."
+  },
+  "act_errors_invalidStartTab": {
+    "message": "O Computer Use não pode iniciar em uma aba em branco ou chrome://. Abra um site ou permita a navegação para uma página inicial."
   },
 
   "act_searchGoogle_start": {

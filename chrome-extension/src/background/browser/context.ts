@@ -10,8 +10,12 @@ import Page, { build_initial_state } from './page';
 import { createLogger } from '@src/background/log';
 import { isUrlAllowed } from './util';
 import { analytics } from '../services/analytics';
+import { t } from '@extension/i18n';
 
 const logger = createLogger('BrowserContext');
+
+/** Bootstrap https page when Computer Use starts on chrome://newtab or about:blank */
+export const COMPUTER_USE_BOOTSTRAP_URL = 'https://www.google.com';
 export default class BrowserContext {
   private _config: BrowserContextConfig;
   private _currentTabId: number | null = null;
@@ -34,6 +38,10 @@ export default class BrowserContext {
     this._currentTabId = tabId;
   }
 
+  public getCurrentTabId(): number | null {
+    return this._currentTabId;
+  }
+
   private async _getOrCreatePage(tab: chrome.tabs.Tab, forceUpdate = false): Promise<Page> {
     if (!tab.id) {
       throw new Error('Tab ID is not available');
@@ -43,6 +51,7 @@ export default class BrowserContext {
     if (existingPage) {
       logger.info('getOrCreatePage', tab.id, 'already attached');
       if (!forceUpdate) {
+        existingPage.syncFromTab(tab);
         return existingPage;
       }
       // detach the page and remove it from the attached pages if forceUpdate is true
@@ -65,15 +74,23 @@ export default class BrowserContext {
   }
 
   public async attachPage(page: Page): Promise<boolean> {
-    // check if page is already attached
-    if (this._attachedPages.has(page.tabId)) {
-      logger.info('attachPage', page.tabId, 'already attached');
+    if (page.attached) {
+      if (!this._attachedPages.has(page.tabId)) {
+        this._attachedPages.set(page.tabId, page);
+      }
       return true;
+    }
+
+    if (this._attachedPages.has(page.tabId)) {
+      this._attachedPages.delete(page.tabId);
+    }
+
+    if (!page.validWebPage) {
+      return false;
     }
 
     if (await page.attachPuppeteer()) {
       logger.info('attachPage', page.tabId, 'attached');
-      // add page to managed pages
       this._attachedPages.set(page.tabId, page);
       return true;
     }
@@ -108,6 +125,7 @@ export default class BrowserContext {
       }
       logger.info('active tab', activeTab.id, activeTab.url, activeTab.title);
       const page = await this._getOrCreatePage(activeTab);
+      page.syncFromTab(activeTab);
       await this.attachPage(page);
       this._currentTabId = activeTab.id || null;
       return page;
@@ -118,13 +136,46 @@ export default class BrowserContext {
     if (!existingPage) {
       const tab = await chrome.tabs.get(this._currentTabId);
       const page = await this._getOrCreatePage(tab);
-      // set current tab id to null if the page is not attached successfully
+      page.syncFromTab(tab);
       await this.attachPage(page);
       return page;
     }
 
-    // 3. Return existing page from attachedPages
+    // 3. Return existing page from attachedPages, refreshing metadata and reconnecting if needed
+    const tab = await chrome.tabs.get(this._currentTabId);
+    existingPage.syncFromTab(tab);
+    if (existingPage.validWebPage && !existingPage.attached) {
+      await this.attachPage(existingPage);
+    }
     return existingPage;
+  }
+
+  public async ensureComputerUsePage(tabId: number, options?: { bootstrapUrl?: string }): Promise<Page> {
+    let page = await this.switchTab(tabId);
+    const tab = await chrome.tabs.get(tabId);
+    page.syncFromTab(tab);
+
+    if (!page.validWebPage || !page.attached) {
+      if (!page.validWebPage) {
+        const bootstrapUrl = options?.bootstrapUrl ?? COMPUTER_USE_BOOTSTRAP_URL;
+        if (!isUrlAllowed(bootstrapUrl, this._config.allowedUrls, this._config.deniedUrls)) {
+          throw new Error(t('act_errors_invalidStartTab'));
+        }
+        logger.info('ensureComputerUsePage: bootstrapping invalid tab to', bootstrapUrl);
+        await this.navigateTo(bootstrapUrl);
+        page = await this.getCurrentPage();
+      }
+
+      if (!page.attached) {
+        await this.attachPage(page);
+      }
+    }
+
+    if (!page.attached) {
+      throw new Error(t('act_errors_puppeteerNotConnected'));
+    }
+
+    return page;
   }
 
   /**
@@ -224,7 +275,9 @@ export default class BrowserContext {
     await chrome.tabs.update(tabId, { active: true });
     await this.waitForTabEvents(tabId, { waitForUpdate: false });
 
-    const page = await this._getOrCreatePage(await chrome.tabs.get(tabId));
+    const tab = await chrome.tabs.get(tabId);
+    const page = await this._getOrCreatePage(tab);
+    page.syncFromTab(tab);
     await this.attachPage(page);
     this._currentTabId = tabId;
     return page;

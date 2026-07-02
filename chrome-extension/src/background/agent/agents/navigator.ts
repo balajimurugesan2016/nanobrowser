@@ -28,6 +28,9 @@ import { convertZodToJsonSchema, repairJsonString } from '@src/background/utils'
 import { HistoryTreeProcessor } from '@src/background/browser/dom/history/service';
 import { AgentStepRecord } from '../history';
 import { type DOMHistoryElement } from '@src/background/browser/dom/history/view';
+import { buildBatchActionItems } from '../actions/labels';
+import { t } from '@extension/i18n';
+import type { BatchActionItem, MessageMetadata } from '@extension/storage';
 
 const logger = createLogger('NavigatorAgent');
 
@@ -202,7 +205,6 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
 
       // take the actions
       actionResults = await this.doMultiAction(actions);
-      // logger.info('Action results', JSON.stringify(actionResults, null, 2));
 
       this.context.actionResults = actionResults;
 
@@ -363,10 +365,71 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     return actions;
   }
 
+  private buildBatchMetadata(
+    batchActions: BatchActionItem[],
+    currentIndex?: number,
+    screenshot?: string,
+  ): MessageMetadata {
+    const total = batchActions.length;
+    const current = currentIndex !== undefined ? currentIndex + 1 : 0;
+    return {
+      batchActions,
+      batchCurrent: current,
+      batchTotal: total,
+      toolName: 'browser_batch',
+      screenshot,
+    };
+  }
+
+  private async emitBatchStart(batchActions: BatchActionItem[]): Promise<void> {
+    const metadata = this.buildBatchMetadata(batchActions);
+    await this.context.emitEvent(
+      Actors.NAVIGATOR,
+      ExecutionState.BATCH_START,
+      t('chat_navigator_batchHeader', [`${batchActions.length}`, `${batchActions.length}`]),
+      metadata,
+    );
+  }
+
+  private async emitBatchProgress(
+    batchActions: BatchActionItem[],
+    actionIndex: number,
+    screenshot?: string,
+  ): Promise<void> {
+    const metadata = this.buildBatchMetadata(batchActions, actionIndex, screenshot);
+    await this.context.emitEvent(
+      Actors.NAVIGATOR,
+      ExecutionState.BATCH_PROGRESS,
+      t('chat_navigator_batchHeader', [`${actionIndex + 1}`, `${batchActions.length}`]),
+      metadata,
+    );
+  }
+
+  private async emitBatchOk(batchActions: BatchActionItem[], screenshot?: string): Promise<void> {
+    const doneActions = batchActions.map(a => ({ ...a, status: 'done' as const }));
+    const metadata = this.buildBatchMetadata(doneActions, batchActions.length - 1, screenshot);
+    await this.context.emitEvent(
+      Actors.NAVIGATOR,
+      ExecutionState.BATCH_OK,
+      t('chat_navigator_batchHeader', [`${batchActions.length}`, `${batchActions.length}`]),
+      metadata,
+    );
+  }
+
   private async doMultiAction(actions: Record<string, unknown>[]): Promise<ActionResult[]> {
     const results: ActionResult[] = [];
     let errCount = 0;
     logger.info('Actions', actions);
+
+    const displayActions = actions.filter(action => Object.keys(action)[0] !== 'done');
+    const batchActions = buildBatchActionItems(displayActions);
+    const navigationActions = new Set(['go_to_url', 'search_google', 'go_back', 'open_tab']);
+    let didNavigate = false;
+    let batchScreenshot: string | undefined;
+
+    if (batchActions.length > 0) {
+      await this.emitBatchStart(batchActions);
+    }
 
     const browserContext = this.context.browserContext;
     const browserState = await browserContext.getState(this.context.options.useVision);
@@ -377,6 +440,13 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     for (const [i, action] of actions.entries()) {
       const actionName = Object.keys(action)[0];
       const actionArgs = action[actionName];
+      const displayIndex = displayActions.indexOf(action);
+
+      if (displayIndex >= 0 && batchActions.length > 0) {
+        batchActions[displayIndex] = { ...batchActions[displayIndex], status: 'running' };
+        await this.emitBatchProgress(batchActions, displayIndex);
+      }
+
       try {
         // check if the task is paused or stopped
         if (this.context.paused || this.context.stopped) {
@@ -423,6 +493,14 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
         }
         results.push(result);
 
+        if (navigationActions.has(actionName)) {
+          didNavigate = true;
+        }
+
+        if (displayIndex >= 0 && batchActions.length > 0) {
+          batchActions[displayIndex] = { ...batchActions[displayIndex], status: 'done' };
+        }
+
         // check if the task is paused or stopped
         if (this.context.paused || this.context.stopped) {
           return results;
@@ -453,8 +531,27 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
             includeInMemory: true,
           }),
         );
+
+        if (displayIndex >= 0 && batchActions.length > 0) {
+          batchActions[displayIndex] = { ...batchActions[displayIndex], status: 'failed' };
+        }
       }
     }
+
+    if (didNavigate && this.context.options.useVision) {
+      const freshState = await browserContext.getState(true);
+      if (freshState.screenshot) {
+        batchScreenshot = freshState.screenshot;
+        batchActions.push({ label: t('chat_navigator_capturingPage'), status: 'running' });
+        await this.emitBatchProgress(batchActions, batchActions.length - 1, batchScreenshot);
+        batchActions[batchActions.length - 1] = { label: t('chat_navigator_capturingPage'), status: 'done' };
+      }
+    }
+
+    if (batchActions.length > 0) {
+      await this.emitBatchOk(batchActions, batchScreenshot);
+    }
+
     return results;
   }
 

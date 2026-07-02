@@ -21,8 +21,19 @@ import { type BrowserContextConfig, DEFAULT_BROWSER_CONTEXT_CONFIG, type PageSta
 import { createLogger } from '@src/background/log';
 import { ClickableElementProcessor } from './dom/clickable/service';
 import { isUrlAllowed } from './util';
+import { convertBrowserKeyToken } from './computerKeys';
 
 const logger = createLogger('Page');
+
+export function isValidWebPageUrl(tabId: number, url: string): boolean {
+  const lowerCaseUrl = url.trim().toLowerCase();
+  return !!(
+    tabId &&
+    lowerCaseUrl &&
+    lowerCaseUrl.startsWith('http') &&
+    !lowerCaseUrl.startsWith('https://chromewebstore.google.com')
+  );
+}
 
 export function build_initial_state(tabId?: number, url?: string, title?: string): PageState {
   return {
@@ -72,14 +83,15 @@ export default class Page {
     this._tabId = tabId;
     this._config = { ...DEFAULT_BROWSER_CONTEXT_CONFIG, ...config };
     this._state = build_initial_state(tabId, url, title);
-    // chrome://newtab/, chrome://newtab/extensions, https://chromewebstore.google.com/ are not valid web pages, can't be attached
-    const lowerCaseUrl = url.trim().toLowerCase();
-    this._validWebPage =
-      (tabId &&
-        lowerCaseUrl &&
-        lowerCaseUrl.startsWith('http') &&
-        !lowerCaseUrl.startsWith('https://chromewebstore.google.com')) ||
-      false;
+    this._validWebPage = isValidWebPageUrl(tabId, url);
+  }
+
+  syncFromTab(tab: chrome.tabs.Tab): void {
+    const url = tab.url || '';
+    const title = tab.title || '';
+    this._state.url = url;
+    this._state.title = title;
+    this._validWebPage = isValidWebPageUrl(this._tabId, url);
   }
 
   get tabId(): number {
@@ -720,10 +732,12 @@ export default class Page {
     }
   }
 
-  async sendKeys(keys: string): Promise<void> {
+  async sendKeys(keys: string, options?: { waitForLoad?: boolean }): Promise<void> {
     if (!this._puppeteerPage) {
       throw new Error('Puppeteer page is not connected');
     }
+
+    const waitForLoad = options?.waitForLoad ?? true;
 
     // Split combination keys (e.g., "Control+A" or "Shift+ArrowLeft")
     const keyParts = keys.split('+');
@@ -737,11 +751,12 @@ export default class Page {
         await this._puppeteerPage.keyboard.down(this._convertKey(modifier));
       }
       // Press the main key
-      // also wait for stable state
-      await Promise.all([
-        this._puppeteerPage.keyboard.press(this._convertKey(mainKey)),
-        this.waitForPageAndFramesLoad(),
-      ]);
+      const pressPromise = this._puppeteerPage.keyboard.press(this._convertKey(mainKey));
+      if (waitForLoad) {
+        await Promise.all([pressPromise, this.waitForPageAndFramesLoad()]);
+      } else {
+        await pressPromise;
+      }
       logger.info('sendKeys complete', keys);
     } catch (error) {
       logger.error('Failed to send keys:', error);
@@ -759,155 +774,156 @@ export default class Page {
   }
 
   private _convertKey(key: string): KeyInput {
-    const lowerKey = key.trim().toLowerCase();
     const isMac = navigator.userAgent.toLowerCase().includes('mac os x');
-
-    if (isMac) {
-      if (lowerKey === 'control' || lowerKey === 'ctrl') {
-        return 'Meta' as KeyInput; // Use Command key on Mac
-      }
-      if (lowerKey === 'command' || lowerKey === 'cmd') {
-        return 'Meta' as KeyInput; // Map Command/Cmd to Meta on Mac
-      }
-      if (lowerKey === 'option' || lowerKey === 'opt') {
-        return 'Alt' as KeyInput; // Map Option/Opt to Alt on Mac
-      }
-    }
-
-    const keyMap: { [key: string]: string } = {
-      // Letters
-      a: 'KeyA',
-      b: 'KeyB',
-      c: 'KeyC',
-      d: 'KeyD',
-      e: 'KeyE',
-      f: 'KeyF',
-      g: 'KeyG',
-      h: 'KeyH',
-      i: 'KeyI',
-      j: 'KeyJ',
-      k: 'KeyK',
-      l: 'KeyL',
-      m: 'KeyM',
-      n: 'KeyN',
-      o: 'KeyO',
-      p: 'KeyP',
-      q: 'KeyQ',
-      r: 'KeyR',
-      s: 'KeyS',
-      t: 'KeyT',
-      u: 'KeyU',
-      v: 'KeyV',
-      w: 'KeyW',
-      x: 'KeyX',
-      y: 'KeyY',
-      z: 'KeyZ',
-
-      // Numbers
-      '0': 'Digit0',
-      '1': 'Digit1',
-      '2': 'Digit2',
-      '3': 'Digit3',
-      '4': 'Digit4',
-      '5': 'Digit5',
-      '6': 'Digit6',
-      '7': 'Digit7',
-      '8': 'Digit8',
-      '9': 'Digit9',
-
-      // Special keys
-      control: 'Control',
-      shift: 'Shift',
-      alt: 'Alt',
-      meta: 'Meta',
-      enter: 'Enter',
-      backspace: 'Backspace',
-      delete: 'Delete',
-      arrowleft: 'ArrowLeft',
-      arrowright: 'ArrowRight',
-      arrowup: 'ArrowUp',
-      arrowdown: 'ArrowDown',
-      escape: 'Escape',
-      tab: 'Tab',
-      space: 'Space',
-    };
-
-    const convertedKey = keyMap[lowerKey] || key;
+    const convertedKey = convertBrowserKeyToken(key, isMac);
     logger.info('convertedKey', convertedKey);
-    return convertedKey as KeyInput;
+    return convertedKey;
   }
 
   async scrollToText(text: string, nth: number = 1): Promise<boolean> {
+    const targetElement = await this._findVisibleTextElement(text, nth);
+    if (!targetElement) {
+      return false;
+    }
+
+    try {
+      await this._scrollIntoViewIfNeeded(targetElement);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      return true;
+    } finally {
+      await targetElement.dispose();
+    }
+  }
+
+  async getCheckboxStates(): Promise<Array<{ index: number; checked: boolean }>> {
+    if (!this._puppeteerPage) {
+      return [];
+    }
+
+    return this._puppeteerPage.evaluate(() =>
+      Array.from(document.querySelectorAll('input[type="checkbox"]')).map((element, index) => ({
+        index: index + 1,
+        checked: (element as HTMLInputElement).checked,
+      })),
+    );
+  }
+
+  async clickNthCheckbox(nth: number): Promise<string> {
+    if (!this._puppeteerPage) {
+      throw new Error('Puppeteer page is not connected');
+    }
+
+    if (this._computerUseViewport) {
+      await this.ensureComputerUseViewport(this._computerUseViewport.width, this._computerUseViewport.height);
+    }
+
+    const checkboxes = await this._puppeteerPage.$$('input[type="checkbox"]');
+    if (checkboxes.length < nth) {
+      for (const checkbox of checkboxes) {
+        await checkbox.dispose();
+      }
+      return `Could not find checkbox ${nth}. Found ${checkboxes.length} checkbox(es) on the page.`;
+    }
+
+    const target = checkboxes[nth - 1];
+    try {
+      await this._scrollIntoViewIfNeeded(target);
+      await target.click();
+      await this.waitComputerUse(0.3);
+      return `Clicked checkbox ${nth}.`;
+    } finally {
+      for (const checkbox of checkboxes) {
+        await checkbox.dispose();
+      }
+    }
+  }
+
+  async clickTextTarget(text: string, nth: number = 1): Promise<string> {
+    const targetElement = await this._findVisibleTextElement(text, nth);
+    if (!targetElement) {
+      return `Could not find visible target "${text}". Use scroll with text set to "${text}" or scroll down further.`;
+    }
+
+    const urlBefore = this.url();
+
+    try {
+      await this._scrollIntoViewIfNeeded(targetElement);
+      await targetElement.click();
+      await this.waitComputerUse(0.5);
+      try {
+        await this.waitForPageAndFramesLoad();
+      } catch {
+        // Navigation may not occur for every click.
+      }
+    } finally {
+      await targetElement.dispose();
+    }
+
+    const urlAfter = this.url();
+    const title = await this.title();
+    if (urlBefore !== urlAfter) {
+      return `Clicked "${text}". Navigated to ${urlAfter} (${title}).`;
+    }
+    return `Clicked "${text}". Current page: ${urlAfter} (${title}).`;
+  }
+
+  private async _findVisibleTextElement(text: string, nth = 1): Promise<ElementHandle | null> {
     if (!this._puppeteerPage) {
       throw new Error('Puppeteer is not connected');
     }
 
-    try {
-      // Convert text to lowercase for consistent searching
-      const lowerCaseText = text.toLowerCase();
+    const lowerCaseText = text.toLowerCase();
+    const selectors = [
+      `::-p-text(${text})`,
+      `::-p-xpath(//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${lowerCaseText}')])`,
+    ];
 
-      // Try different locator strategies to find all elements containing the text
-      const selectors = [
-        // Using text selector (equivalent to get_by_text) - for exact text match
-        `::-p-text(${text})`,
-        // Using XPath selector (contains text) - case insensitive
-        `::-p-xpath(//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${lowerCaseText}')])`,
-      ];
+    for (const selector of selectors) {
+      const elements = await this._puppeteerPage.$$(selector);
+      const visibleElements = [];
 
-      for (const selector of selectors) {
-        try {
-          // Use $$ to get all matching elements
-          const elements = await this._puppeteerPage.$$(selector);
+      try {
+        for (const element of elements) {
+          const isVisible = await element.evaluate(el => {
+            const style = window.getComputedStyle(el);
+            const rect = el.getBoundingClientRect();
+            return (
+              style.display !== 'none' &&
+              style.visibility !== 'hidden' &&
+              style.opacity !== '0' &&
+              rect.width > 0 &&
+              rect.height > 0
+            );
+          });
 
-          if (elements.length > 0) {
-            // Find visible elements and select the nth occurrence
-            const visibleElements = [];
-
-            for (const element of elements) {
-              const isVisible = await element.evaluate(el => {
-                const style = window.getComputedStyle(el);
-                const rect = el.getBoundingClientRect();
-                return (
-                  style.display !== 'none' &&
-                  style.visibility !== 'hidden' &&
-                  style.opacity !== '0' &&
-                  rect.width > 0 &&
-                  rect.height > 0
-                );
-              });
-
-              if (isVisible) {
-                visibleElements.push(element);
-              }
-            }
-
-            // Check if we have enough visible elements for the requested nth occurrence
-            if (visibleElements.length >= nth) {
-              const targetElement = visibleElements[nth - 1]; // Convert to 0-indexed
-              await this._scrollIntoViewIfNeeded(targetElement);
-              await new Promise(resolve => setTimeout(resolve, 500)); // Wait for scroll to complete
-
-              // Dispose of all element handles to prevent memory leaks
-              for (const element of elements) {
-                await element.dispose();
-              }
-
-              return true;
-            }
-          }
-
-          // Dispose of all element handles to prevent memory leaks
-          for (const element of elements) {
+          if (isVisible) {
+            visibleElements.push(element);
+          } else {
             await element.dispose();
           }
-        } catch (e) {
-          logger.debug(`Locator attempt failed: ${e}`);
         }
+
+        if (visibleElements.length >= nth) {
+          for (const [index, element] of visibleElements.entries()) {
+            if (index !== nth - 1) {
+              await element.dispose();
+            }
+          }
+          return visibleElements[nth - 1];
+        }
+
+        for (const element of visibleElements) {
+          await element.dispose();
+        }
+      } catch (error) {
+        for (const element of elements) {
+          await element.dispose();
+        }
+        logger.debug(`Locator attempt failed: ${error}`);
       }
-      return false;
-    } catch (error) {
-      throw new Error(error instanceof Error ? error.message : String(error));
     }
+
+    return null;
   }
 
   async getDropdownOptions(index: number): Promise<Array<{ index: number; text: string; value: string }>> {
@@ -1618,5 +1634,210 @@ export default class Page {
 
       throw new URLNotAllowedError(errorMessage);
     }
+  }
+
+  private _computerUseViewport: { width: number; height: number } | null = null;
+
+  async ensureComputerUseViewport(width: number, height: number): Promise<void> {
+    if (!this._puppeteerPage) {
+      throw new Error('Puppeteer page is not connected');
+    }
+
+    if (this._computerUseViewport?.width === width && this._computerUseViewport?.height === height) {
+      return;
+    }
+
+    await this._puppeteerPage.setViewport({ width, height, deviceScaleFactor: 1 });
+    this._computerUseViewport = { width, height };
+  }
+
+  async takeComputerUseScreenshot(width: number, height: number): Promise<string> {
+    if (!this._puppeteerPage) {
+      throw new Error('Puppeteer page is not connected');
+    }
+
+    await this.ensureComputerUseViewport(width, height);
+
+    try {
+      await this._puppeteerPage.evaluate(() => {
+        const styleId = 'puppeteer-disable-animations';
+        if (!document.getElementById(styleId)) {
+          const style = document.createElement('style');
+          style.id = styleId;
+          style.textContent = `
+            *, *::before, *::after {
+              animation: none !important;
+              transition: none !important;
+            }
+          `;
+          document.head.appendChild(style);
+        }
+      });
+
+      const screenshot = await this._puppeteerPage.screenshot({
+        clip: { x: 0, y: 0, width, height },
+        encoding: 'base64',
+        type: 'jpeg',
+        quality: 80,
+      });
+
+      await this._puppeteerPage.evaluate(() => {
+        const style = document.getElementById('puppeteer-disable-animations');
+        if (style) {
+          style.remove();
+        }
+      });
+
+      return screenshot as string;
+    } catch (error) {
+      logger.error('Failed to take computer use screenshot:', error);
+      throw error;
+    }
+  }
+
+  async clickAtCoordinate(
+    x: number,
+    y: number,
+    clickCount = 1,
+    button: 'left' | 'right' | 'middle' = 'left',
+  ): Promise<void> {
+    if (!this._puppeteerPage) {
+      throw new Error('Puppeteer page is not connected');
+    }
+
+    if (this._computerUseViewport) {
+      await this.ensureComputerUseViewport(this._computerUseViewport.width, this._computerUseViewport.height);
+    }
+
+    await this._puppeteerPage.mouse.move(x, y);
+    await this._puppeteerPage.mouse.click(x, y, { clickCount, button });
+  }
+
+  async typeComputerText(text: string): Promise<void> {
+    if (!this._puppeteerPage) {
+      throw new Error('Puppeteer page is not connected');
+    }
+
+    await this._puppeteerPage.keyboard.type(text, { delay: 0 });
+  }
+
+  async pressComputerKey(key: string): Promise<void> {
+    if (!this._puppeteerPage) {
+      throw new Error('Puppeteer page is not connected');
+    }
+
+    await this.sendKeys(key.trim(), { waitForLoad: false });
+  }
+
+  async moveMouseToCoordinate(x: number, y: number): Promise<void> {
+    if (!this._puppeteerPage) {
+      throw new Error('Puppeteer page is not connected');
+    }
+
+    if (this._computerUseViewport) {
+      await this.ensureComputerUseViewport(this._computerUseViewport.width, this._computerUseViewport.height);
+    }
+
+    await this._puppeteerPage.mouse.move(x, y);
+  }
+
+  async setMouseButtonState(
+    button: 'left' | 'right' | 'middle',
+    state: 'down' | 'up',
+    coordinate?: [number, number],
+  ): Promise<void> {
+    if (!this._puppeteerPage) {
+      throw new Error('Puppeteer page is not connected');
+    }
+
+    if (this._computerUseViewport) {
+      await this.ensureComputerUseViewport(this._computerUseViewport.width, this._computerUseViewport.height);
+    }
+
+    if (coordinate) {
+      await this._puppeteerPage.mouse.move(coordinate[0], coordinate[1]);
+    }
+
+    if (state === 'down') {
+      await this._puppeteerPage.mouse.down({ button });
+    } else {
+      await this._puppeteerPage.mouse.up({ button });
+    }
+  }
+
+  async dragMouseBetween(
+    start: [number, number],
+    end: [number, number],
+    button: 'left' | 'right' | 'middle' = 'left',
+  ): Promise<void> {
+    if (!this._puppeteerPage) {
+      throw new Error('Puppeteer page is not connected');
+    }
+
+    if (this._computerUseViewport) {
+      await this.ensureComputerUseViewport(this._computerUseViewport.width, this._computerUseViewport.height);
+    }
+
+    await this._puppeteerPage.mouse.move(start[0], start[1]);
+    await this._puppeteerPage.mouse.down({ button });
+    await this._puppeteerPage.mouse.move(end[0], end[1]);
+    await this._puppeteerPage.mouse.up({ button });
+  }
+
+  async holdComputerKey(key: string, durationSeconds: number): Promise<void> {
+    if (!this._puppeteerPage) {
+      throw new Error('Puppeteer page is not connected');
+    }
+
+    const convertedKey = this._convertKey(key);
+    await this._puppeteerPage.keyboard.down(convertedKey);
+    await this.waitComputerUse(durationSeconds);
+    await this._puppeteerPage.keyboard.up(convertedKey);
+  }
+
+  async zoomComputerUseRegion(region: [number, number, number, number], viewportHeight: number): Promise<void> {
+    const centerY = (region[1] + region[3]) / 2;
+    if (centerY > viewportHeight * 0.6) {
+      await this.scrollComputerUse('down', Math.max(2, Math.ceil((centerY - viewportHeight * 0.5) / 80)));
+      return;
+    }
+    if (centerY < viewportHeight * 0.25) {
+      await this.scrollComputerUse('up', 2);
+    }
+  }
+
+  async scrollComputerUse(direction: 'up' | 'down' | 'left' | 'right', amount: number): Promise<void> {
+    if (!this._puppeteerPage) {
+      throw new Error('Puppeteer page is not connected');
+    }
+
+    const delta = Math.max(1, amount) * 100;
+    await this._puppeteerPage.evaluate(
+      (scrollDirection, scrollDelta) => {
+        switch (scrollDirection) {
+          case 'down':
+            window.scrollBy(0, scrollDelta);
+            break;
+          case 'up':
+            window.scrollBy(0, -scrollDelta);
+            break;
+          case 'right':
+            window.scrollBy(scrollDelta, 0);
+            break;
+          case 'left':
+            window.scrollBy(-scrollDelta, 0);
+            break;
+          default:
+            break;
+        }
+      },
+      direction,
+      delta,
+    );
+  }
+
+  async waitComputerUse(durationSeconds: number): Promise<void> {
+    const ms = Math.max(0, durationSeconds) * 1000;
+    await new Promise(resolve => setTimeout(resolve, ms));
   }
 }

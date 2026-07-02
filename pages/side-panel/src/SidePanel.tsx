@@ -21,7 +21,7 @@ declare global {
 }
 
 const SidePanel = () => {
-  const progressMessage = 'Showing progress...';
+  const progressMessage = t('chat_progress_showing');
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputEnabled, setInputEnabled] = useState(true);
   const [showStopButton, setShowStopButton] = useState(false);
@@ -124,12 +124,28 @@ const SidePanel = () => {
     isReplayingRef.current = isReplaying;
   }, [isReplaying]);
 
+  const updateLastMessageOfKind = useCallback(
+    (kind: NonNullable<Message['kind']>, updater: (message: Message) => Message) => {
+      setMessages(prev => {
+        const index = prev.findLastIndex(msg => msg.kind === kind);
+        if (index === -1) {
+          return prev;
+        }
+        const next = [...prev];
+        next[index] = updater(next[index]);
+        return next;
+      });
+    },
+    [],
+  );
+
   const appendMessage = useCallback((newMessage: Message, sessionId?: string | null) => {
-    // Don't save progress messages
-    const isProgressMessage = newMessage.content === progressMessage;
+    const isProgressMessage = newMessage.kind === 'progress' || newMessage.content === progressMessage;
 
     setMessages(prev => {
-      const filteredMessages = prev.filter((msg, idx) => !(msg.content === progressMessage && idx === prev.length - 1));
+      const filteredMessages = prev.filter(
+        (msg, idx) => !((msg.kind === 'progress' || msg.content === progressMessage) && idx === prev.length - 1),
+      );
       return [...filteredMessages, newMessage];
     });
 
@@ -196,6 +212,16 @@ const SidePanel = () => {
             case ExecutionState.STEP_START:
               displayProgress = true;
               break;
+            case ExecutionState.PLAN_CREATED:
+              skip = false;
+              appendMessage({
+                actor,
+                content: content || t('chat_planner_planCreated'),
+                timestamp,
+                kind: 'plan',
+                metadata: data?.metadata,
+              });
+              return;
             case ExecutionState.STEP_OK:
               skip = false;
               break;
@@ -214,6 +240,42 @@ const SidePanel = () => {
             case ExecutionState.STEP_START:
               displayProgress = true;
               break;
+            case ExecutionState.CAPTURE_PAGE:
+              skip = false;
+              appendMessage({
+                actor,
+                content: content || t('chat_navigator_capturingPage'),
+                timestamp,
+                kind: 'capture',
+                metadata: data?.metadata,
+              });
+              return;
+            case ExecutionState.BATCH_START:
+              skip = false;
+              appendMessage({
+                actor,
+                content: content || '',
+                timestamp,
+                kind: 'batch',
+                metadata: data?.metadata,
+              });
+              return;
+            case ExecutionState.BATCH_PROGRESS:
+              updateLastMessageOfKind('batch', msg => ({
+                ...msg,
+                content: content || msg.content,
+                timestamp,
+                metadata: data?.metadata ?? msg.metadata,
+              }));
+              return;
+            case ExecutionState.BATCH_OK:
+              updateLastMessageOfKind('batch', msg => ({
+                ...msg,
+                content: content || msg.content,
+                timestamp,
+                metadata: data?.metadata ?? msg.metadata,
+              }));
+              return;
             case ExecutionState.STEP_OK:
               displayProgress = false;
               break;
@@ -225,10 +287,8 @@ const SidePanel = () => {
               displayProgress = false;
               break;
             case ExecutionState.ACT_START:
-              if (content !== 'cache_content') {
-                // skip to display caching content
-                skip = false;
-              }
+              // Individual actions are shown via batch UI
+              skip = true;
               break;
             case ExecutionState.ACT_OK:
               skip = !isReplayingRef.current;
@@ -276,10 +336,11 @@ const SidePanel = () => {
           actor,
           content: progressMessage,
           timestamp: timestamp,
+          kind: 'progress',
         });
       }
     },
-    [appendMessage],
+    [appendMessage, updateLastMessageOfKind],
   );
 
   // Stop heartbeat and close connection
