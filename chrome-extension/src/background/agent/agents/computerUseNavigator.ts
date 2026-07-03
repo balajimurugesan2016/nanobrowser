@@ -21,7 +21,8 @@ import {
 import { buildComputerActionFeedback } from '../computer-use/actionFeedback';
 import { prepareComputerUseTab } from '../computer-use/prepareComputerUseTab';
 import { evaluateNumberedTaskProgress, type ComputerUseSnapshot } from '../computer-use/taskProgress';
-import { extractQuotedTargetTexts } from '../computer-use/taskUrl';
+import { extractQuotedTargetTexts, isResearchTask } from '../computer-use/taskUrl';
+import { getReadabilityContent } from '@src/background/browser/dom/service';
 import { URLNotAllowedError } from '@src/background/browser/views';
 import { BrowserHarness } from '../computer-use/browserHarness';
 import {
@@ -36,6 +37,7 @@ import {
   messagesEndWithUser,
   OpenRouterAnthropicClient,
   parseComputerToolUses,
+  extractAssistantTextFromResponse,
 } from '../computer-use/openRouterAnthropicClient';
 import type { AnthropicMessage, ComputerUseConfig } from '../computer-use/types';
 
@@ -48,6 +50,8 @@ export interface ComputerUseNavigatorOptions {
   task: string;
   client?: OpenRouterAnthropicClient;
 }
+
+const RESEARCH_PAGE_CONTENT_MAX_CHARS = 12000;
 
 export class ComputerUseNavigator {
   private readonly context: AgentContext;
@@ -97,6 +101,14 @@ export class ComputerUseNavigator {
     const snapshot = this.getSnapshot();
     const checkboxStates = await page.getCheckboxStates();
     const progress = evaluateNumberedTaskProgress(this.task, page.url(), snapshot, checkboxStates);
+    let pageContentSection = '';
+    if (isResearchTask(this.task)) {
+      const tabId = this.context.browserContext.getCurrentTabId();
+      if (tabId) {
+        pageContentSection = await this.buildResearchPageContentSection(tabId, page.url());
+      }
+    }
+
     const stateDescription = `[Task history memory ends]
 [Current state starts here]
 Computer use mode: the navigator uses screenshots and the computer tool, not DOM element indices like [1] or [2].
@@ -105,10 +117,29 @@ User task: ${this.task}
 ${this.context.plannerNextSteps ? `Planner next steps: ${this.context.plannerNextSteps}` : ''}
 Task progress:
 ${progress.summaryLines.map(line => `- ${line}`).join('\n')}
+${pageContentSection}
 Navigator guidance: use left_click.text for link labels, left_click.text "checkbox 1" for the first checkbox, then screenshot.`;
 
     messageManager.addStateMessage(new HumanMessage(stateDescription));
     this.context.stateMessageAdded = true;
+  }
+
+  private async buildResearchPageContentSection(tabId: number, pageUrl: string): Promise<string> {
+    try {
+      const readability = await getReadabilityContent(tabId);
+      const text = readability.textContent.trim();
+      if (!text) {
+        return '';
+      }
+      const truncated =
+        text.length > RESEARCH_PAGE_CONTENT_MAX_CHARS
+          ? `${text.slice(0, RESEARCH_PAGE_CONTENT_MAX_CHARS)}\n...[truncated]`
+          : text;
+      return `\nPage content for synthesis (source: ${pageUrl}):\n${truncated}`;
+    } catch (error) {
+      logger.warning(`Failed to load page content for research task: ${String(error)}`);
+      return '';
+    }
   }
 
   private getSnapshot(): ComputerUseSnapshot {
@@ -133,7 +164,10 @@ Navigator guidance: use left_click.text for link labels, left_click.text "checkb
     this.screenshotCount += 1;
   }
 
-  private async assistPendingCheckboxStep(harness: BrowserHarness, page: Page): Promise<void> {
+  private async assistPendingCheckboxStep(
+    harness: BrowserHarness,
+    page: Awaited<ReturnType<AgentContext['browserContext']['getCurrentPage']>>,
+  ): Promise<void> {
     if (!/first checkbox/i.test(this.task) || !page.url().includes('/checkboxes')) {
       return;
     }
@@ -223,6 +257,16 @@ Navigator guidance: use left_click.text for link labels, left_click.text "checkb
         }
 
         if (toolUses.length === 0) {
+          const assistantText = extractAssistantTextFromResponse(response);
+          if (isResearchTask(this.task) && assistantText && this.screenshotCount >= 2) {
+            this.context.finalAnswer = assistantText;
+            this.removeLastStateMessageFromMemory();
+            this.syncSnapshotToContext();
+            this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.STEP_OK, assistantText);
+            agentOutput.result = { done: true };
+            return agentOutput;
+          }
+
           if (turn + 1 < maxInnerTurns) {
             const screenshot = await harness.takeScreenshot();
             this.computerMessages.push(

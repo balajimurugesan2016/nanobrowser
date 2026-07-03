@@ -37,4 +37,27 @@ describe('evaluateNumberedTaskProgress', () => {
 
     expect(result.likelyComplete).toBe(false);
   });
+
+  it('marks research tasks complete after enough screenshots', () => {
+    const result = evaluateNumberedTaskProgress(
+      'On this page, find everything about Dipole antennas and summarize it with sources',
+      'https://en.wikipedia.org/wiki/Antenna_types#Dipoles',
+      { screenshotCount: 2, recentActions: ['scroll down'] },
+      [],
+    );
+
+    expect(result.likelyComplete).toBe(true);
+    expect(result.summaryLines.some(line => line.includes('done=true'))).toBe(true);
+  });
+
+  it('keeps research tasks incomplete before enough screenshots', () => {
+    const result = evaluateNumberedTaskProgress(
+      'Summarize this help page about SSO',
+      'https://example.com/help/sso',
+      { screenshotCount: 1, recentActions: [] },
+      [],
+    );
+
+    expect(result.likelyComplete).toBe(false);
+  });
 });

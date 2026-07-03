@@ -28,6 +28,13 @@ export function urlsRoughlyMatch(current: string, target: string): boolean {
 
 const QUOTED_TEXT_PATTERN = /"([^"]+)"|'([^']+)'/g;
 
+const RESEARCH_TASK_PATTERN =
+  /\b(summarize|summary|find everything|find all|extract|research|look up|search for|tell me about|what does .+ say about|with sources)\b/i;
+
+export function isResearchTask(task: string): boolean {
+  return RESEARCH_TASK_PATTERN.test(task);
+}
+
 export function extractQuotedTargetTexts(task: string): string[] {
   const results: string[] = [];
 

@@ -213,6 +213,18 @@ export function parseComputerToolUses(response: AnthropicMessagesResponse): Comp
     }));
 }
 
+export function extractAssistantTextFromResponse(response: AnthropicMessagesResponse): string {
+  if (!response.content) {
+    return '';
+  }
+
+  return response.content
+    .filter((block): block is { type: 'text'; text: string } => block.type === 'text' && typeof block.text === 'string')
+    .map(block => block.text.trim())
+    .filter(Boolean)
+    .join('\n\n');
+}
+
 export function buildMessagesRequestBody(
   config: Pick<ComputerUseConfig, 'modelName' | 'viewportWidth' | 'viewportHeight'>,
   messages: AnthropicMessage[],

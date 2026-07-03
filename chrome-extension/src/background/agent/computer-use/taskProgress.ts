@@ -3,10 +3,14 @@ export interface CheckboxState {
   checked: boolean;
 }
 
+import { isResearchTask } from './taskUrl';
+
 export interface ComputerUseSnapshot {
   screenshotCount: number;
   recentActions: string[];
 }
+
+const RESEARCH_MIN_SCREENSHOTS = 2;
 
 export interface TaskProgressEvaluation {
   summaryLines: string[];
@@ -40,7 +44,7 @@ export function evaluateNumberedTaskProgress(
     );
   }
 
-  const likelyComplete =
+  let likelyComplete =
     onHeroku &&
     screenshotCount >= 1 &&
     (!wantsCheckboxes || onCheckboxes) &&
@@ -48,7 +52,21 @@ export function evaluateNumberedTaskProgress(
     (!wantsFirstCheckbox || firstChecked) &&
     (!wantsFirstCheckbox || screenshotCount >= 3);
 
-  if (likelyComplete) {
+  if (isResearchTask(task)) {
+    summaryLines.push('Research/extraction task detected.');
+    if (screenshotCount >= RESEARCH_MIN_SCREENSHOTS) {
+      likelyComplete = true;
+      summaryLines.push(
+        'Enough page content has been captured. Set done=true and write final_answer using the page content and current URL as the source. Do not request more screenshots.',
+      );
+    } else {
+      summaryLines.push(
+        `Capture at least ${RESEARCH_MIN_SCREENSHOTS} screenshots of the relevant section, then set done=true with final_answer.`,
+      );
+    }
+  }
+
+  if (likelyComplete && onHeroku) {
     summaryLines.push('All numbered steps in the user task appear satisfied. Set done=true with a short final_answer.');
   }
 

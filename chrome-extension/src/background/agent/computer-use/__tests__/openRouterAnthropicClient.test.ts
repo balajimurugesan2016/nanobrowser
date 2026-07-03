@@ -15,6 +15,7 @@ import {
   getOpenRouterMessagesUrl,
   OpenRouterAnthropicClient,
   parseComputerToolUses,
+  extractAssistantTextFromResponse,
   resolveComputerUseVersion,
   COMPUTER_USE_VERSION_LEGACY,
   COMPUTER_USE_VERSION_LATEST,
@@ -164,6 +165,19 @@ describe('parseComputerToolUses', () => {
     expect(toolUses).toHaveLength(1);
     expect(toolUses[0].input.action).toBe('left_click');
     expect(toolUses[0].input.coordinate).toEqual([100, 200]);
+  });
+});
+
+describe('extractAssistantTextFromResponse', () => {
+  it('joins assistant text blocks', () => {
+    const text = extractAssistantTextFromResponse({
+      content: [
+        { type: 'text', text: 'Summary line 1' },
+        { type: 'text', text: 'Summary line 2' },
+      ],
+    });
+
+    expect(text).toBe('Summary line 1\n\nSummary line 2');
   });
 });
 

@@ -180,7 +180,7 @@ export class Executor {
       ...planOutput.result!,
       done: true,
       next_steps: '',
-      final_answer: planOutput.result?.final_answer || 'Task completed successfully.',
+      final_answer: planOutput.result?.final_answer || this.context.finalAnswer || 'Task completed successfully.',
     };
     return { ...planOutput, result: completedPlan };
   }
@@ -236,6 +236,21 @@ export class Executor {
         navigatorDone = await this.navigate();
 
         if (this.automationMode === 'computer_use' && this.planner) {
+          if (navigatorDone && this.context.finalAnswer) {
+            latestPlanOutput = {
+              id: 'planner',
+              result: {
+                observation: '',
+                challenges: '',
+                done: true,
+                next_steps: '',
+                final_answer: this.context.finalAnswer,
+                reasoning: '',
+                web_task: true,
+              },
+            };
+            break;
+          }
           latestPlanOutput = await this.runPlanner();
           if (this.checkTaskCompletion(latestPlanOutput)) {
             break;

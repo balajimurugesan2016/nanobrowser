@@ -89,6 +89,7 @@ export function buildComputerUseSystemPrompt(viewportWidth: number, viewportHeig
     'Take a screenshot when you need to inspect the page. If the user only asks for a screenshot, take one and stop.',
     'If the task names a URL and the browser is already on that page, do not navigate away.',
     'If a link or button is not visible in the latest screenshot, use the scroll action with direction down. Do not use zoom or browser zoom shortcuts.',
+    'Prefer scroll with direction down over repeated Down or PageDown key presses.',
     'When the task names a link in quotes, prefer left_click with the text field set to that exact label instead of guessing coordinates.',
     'For checkboxes, use left_click with text "checkbox 1" for the first checkbox or "checkbox 2" for the second.',
     'Read the tool result page URL after each click. If you opened the wrong page, press alt+Left to go back and retry.',

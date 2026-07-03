@@ -47,6 +47,18 @@ When determining if a task is "done":
   - Don't provide instructions on how to sign in, just ask users to sign in and offer to help them after they sign in
   - Do not plan for next steps
 5. Focus on the current state and last action results to determine completion
+6. For research, summarization, or "find information on this page" tasks:
+  - When page content is provided in the current state, synthesize the answer from that content and mark done=true
+  - Do NOT keep requesting more screenshots once enough content has been captured (typically after 2+ screenshots)
+  - Include the current page URL as the source in final_answer
+  - If the task asks for sources, cite the page URL; do not invent additional URLs
+
+# RESEARCH AND SUMMARIZATION TASKS:
+When the user asks to summarize, extract, or find information on the current page:
+- Your job is to produce the final_answer from the page content in context, not to keep browsing
+- Set done=true as soon as you can answer from the available page content
+- Put your reasoning in the "reasoning" field and the user-facing summary in "final_answer"
+- Leave next_steps empty when done=true
 
 # FINAL ANSWER FORMATTING (when done=true):
 - Use markdown formatting only if required by the task description

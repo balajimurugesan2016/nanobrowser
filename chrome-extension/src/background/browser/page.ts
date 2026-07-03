@@ -1726,7 +1726,16 @@ export default class Page {
       throw new Error('Puppeteer page is not connected');
     }
 
-    await this.sendKeys(key.trim(), { waitForLoad: false });
+    const trimmed = key.trim();
+    // Handle space-separated repeated keys like "Down Down Down" from computer-use models.
+    if (trimmed.includes(' ') && !trimmed.includes('+')) {
+      for (const part of trimmed.split(/\s+/).filter(Boolean)) {
+        await this.sendKeys(part, { waitForLoad: false });
+      }
+      return;
+    }
+
+    await this.sendKeys(trimmed, { waitForLoad: false });
   }
 
   async moveMouseToCoordinate(x: number, y: number): Promise<void> {
